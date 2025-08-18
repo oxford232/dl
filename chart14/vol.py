@@ -1,0 +1,3 @@
+import sentencepiece as spm
+spm.SentencePieceTrainer.Train('--input="./en2cn/train_en_test.txt" --model_prefix=en_bpe_test --vocab_size=100 --model_type=bpe --character_coverage=1.0 --unk_id=0 --pad_id=1 --bos_id=2 --eos_id=3')
+spm.SentencePieceTrainer.Train('--input="./en2cn/train_zh_test.txt" --model_prefix=zh_bpe_test --vocab_size=100 --model_type=bpe --character_coverage=0.9995 --unk_id=0 --pad_id=1 --bos_id=2 --eos_id=3')

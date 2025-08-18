@@ -1,0 +1,8 @@
+PetImages
+en2cn
+mnist
+titanic
+.DS_Store
+*.zip
+__pycache__
+*.pt
