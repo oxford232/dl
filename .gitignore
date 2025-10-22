@@ -6,3 +6,6 @@ titanic
 *.zip
 __pycache__
 *.pt
+icons
+testdata
+*.pkl

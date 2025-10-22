@@ -71,6 +71,7 @@ for epoch in range(num_epochs):
         images, labels = images.to(device), labels.to(device)
 
         outputs = model(images)
+        print(outputs.shape, labels.shape)
         loss = criterion(outputs, labels)
 
         optimizer.zero_grad()

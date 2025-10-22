@@ -5,6 +5,8 @@ import torch
 from torchvision import transforms
 import torch.nn as nn
 import os
+from ResNet import ResNet, BasicBlock
+from torchvision.models import resnet18
 from torch.optim.lr_scheduler import StepLR
 
 
@@ -37,45 +39,13 @@ class ImageDataset(Dataset):
     
     def __getitem__(self, idx):
         path, label = self.samples[idx]
+        label = torch.tensor(label, dtype=torch.long)
         with Image.open(path) as img:
             img = img.convert('RGB')
             if self.transform:
                 img = self.transform(img)
         return img, label
     
-class CNNModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-
-            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-
-            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-
-            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-
-            nn.Conv2d(in_channels=256, out_channels=1, kernel_size=1),
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Flatten(),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, x):
-        return self.model(x)
-
 
 def evaluate(model, test_dataloader):
     model.eval()
@@ -85,33 +55,25 @@ def evaluate(model, test_dataloader):
     with torch.no_grad():
         for inputs, labels in test_dataloader:
             inputs = inputs.to(DEVICE)
-            labels = labels.float().unsqueeze(1).to(DEVICE)
+            labels = labels.to(DEVICE)
 
             outputs = model(inputs)
-            preds = (outputs > 0.5).float()
+            preds = torch.argmax(outputs, dim=1)
             val_correct += (preds == labels).sum().item()
             val_total += labels.size(0)
 
     val_acc = val_correct / val_total
     return val_acc
-
-def weights_init(layer_in):
-    if isinstance(layer_in, nn.Linear):
-        nn.init.kaiming_uniform_(layer_in.weight)
-        layer_in.bias.data.fill(0.0)
-
-
+    
 if __name__ == "__main__":
     BATCH_SIZE = 64
-    IMG_SIZE = 128
-    EPOCHS = 50
-    LR = 0.001
+    IMG_SIZE = 224
+    EPOCHS = 15
+    LR = 0.0005
     PRINT_STEP = 100
-
     DEVICE = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     all_samples = verify_images(r"../PetImages")
-    print(len(all_samples))
     random.seed(42)
     random.shuffle(all_samples)
     train_size = int(len(all_samples) * 0.8)
@@ -130,36 +92,50 @@ if __name__ == "__main__":
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     valid_dataloader = DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    model = CNNModel().to(DEVICE)
-    criterion = nn.BCELoss()
-    model.apply(weights_init)
+    model = ResNet(BasicBlock, [2, 2, 2, 2], num_classes=2)
+
+    # pretrained_model = resnet18(weights='IMAGENET1K_V1')
+    # for param in model.parameters():
+        # param.requires_grad = False
+
+    # model = resnet18(weights=None)
+    # model.fc = nn.Linear(model.fc.in_features, 2)
+    # model = model.to(DEVICE)
+
+    # state_dict = pretrained_model.state_dict()
+    # model.load_state_dict(state_dict)
+
+    # model.fc = nn.Linear(model.fc.in_features, 2)
+
+    model = model.to(DEVICE)
+    model.load_state_dict(torch.load('resnet18.pt', map_location=DEVICE))
+
+    criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=1e-4)
-    scheduler = StepLR(optimizer, step_size=20, gamma=0.5)
+    scheduler = StepLR(optimizer, step_size=3, gamma=0.5)
+
+    
+
 
     for epoch in range(EPOCHS):
-        print(f"\nEpoch {epoch + 1}/{EPOCHS}")
+        print(f"epoch {epoch + 1}")
         model.train()
-        running_loss = 0.0
-
+        running_loss = 0
         for step, (inputs, labels) in enumerate(train_dataloader):
             inputs = inputs.to(DEVICE)
-            labels = labels.float().unsqueeze(1).to(DEVICE)
+            labels = labels.to(DEVICE)
 
             optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            y = model(inputs)
+            loss = criterion(y, labels)
             loss.backward()
             optimizer.step()
-
             running_loss += loss.item()
 
             if (step + 1) % PRINT_STEP == 0:
                 avg_loss = running_loss / PRINT_STEP
                 print(f"  Step [{step + 1}] - Loss: {avg_loss:.4f}")
                 running_loss = 0.0
-        scheduler.step()
-        torch.save(model.state_dict(), "cnn.pt")  
+        torch.save(model.state_dict(), "resnet18.pt")
     val_acc = evaluate(model, valid_dataloader)
     print(f"Validation Accuracy after epoch {epoch + 1}: {val_acc:.4f}")
-
-        
